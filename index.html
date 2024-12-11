@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="cs">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Přehled objednávek</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 800px;
+            margin: auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        input[type="email"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .order-card {
+            background: white;
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .order-card h2 {
+            margin: 0 0 10px;
+        }
+
+        .order-card p {
+            margin: 5px 0;
+        }
+
+        .loading {
+            text-align: center;
+            margin: 20px;
+            font-size: 1.2em;
+            color: #007bff;
+        }
+
+        .chip {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 16px;
+            color: white;
+            font-size: 0.9em;
+            margin: 5px 0;
+        }
+
+        .chip.paid {
+            background-color: #4CAF50;
+            /* Zelená pro zaplaceno */
+        }
+
+        .chip.unpaid {
+            background-color: #f44336;
+            /* Červená pro nezaplaceno */
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        table th,
+        table td {
+            border: 1px solid #ddd;
+            text-align: left;
+            padding: 8px;
+        }
+
+        table th {
+            background-color: #f4f4f4;
+        }
+
+        table td {
+            background-color: #fff;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Přehled objednávek</h1>
+        <input type="email" id="email-input" placeholder="Zadejte svůj e-mail" oninput="filterOrders()">
+        <div id="summary-container"></div>
+        <div id="orders-container"></div>
+    </div>
+    <script>
+        let ordersData = [];
+
+        // Mapa ID -> Název položky
+        const itemMap = {
+            "white": "Tričko White",
+            "black": "Tričko Black",
+            "magenta": "Tričko Magenta",
+            "midnight_blue": "Tričko Midnight blue",
+            "antique_silver": "Tričko Antique silver",
+            "grey": "Mikina Grey",
+            "french_navy": "Mikina French navy",
+            "burgundy": "Mikina Burgundy",
+            "black_hoodie": "Mikina Black"
+        };
+
+        // Konfigurace cen položek (v CZK)
+        const itemPrices = {
+            "white": 250,
+            "black": 250,
+            "magenta": 300,
+            "midnight_blue": 300,
+            "antique_silver": 300,
+            "grey": 500,
+            "french_navy": 500,
+            "burgundy": 500,
+            "black_hoodie": 500
+        };
+
+        const sheetID = "1etORhhOuNLHFydqNup0bRCaPUu7tMQx0E-KOv66fDig"; // Vaše Google Sheets ID
+        const sheetName = "Form Responses 1"; // Název listu
+        const base = `https://docs.google.com/spreadsheets/d/${sheetID}/gviz/tq?`;
+        const query = encodeURIComponent("Select *");
+        const url = `${base}&sheet=${sheetName}&tq=${query}`;
+
+        // Inicializace - načtení dat
+        document.addEventListener("DOMContentLoaded", () => {
+            fetchOrders();
+        });
+
+        async function fetchOrders() {
+            try {
+                const response = await fetch(url);
+                const responseText = await response.text();
+                const jsonData = JSON.parse(responseText.substr(47).slice(0, -2)); // Parsování JSON dat
+                ordersData = parseData(jsonData);
+                document.getElementById('summary-container').innerHTML = `<p>Počet aktuálních objednávek: ${ordersData.length}</p>`;
+            } catch (error) {
+                console.error("Chyba při načítání dat:", error);
+                document.getElementById('summary-container').innerHTML = "<p>Chyba při načítání objednávek.</p>";
+            }
+        }
+
+        function parseData(json) {
+            const columns = json.table.cols.map((col) => col.label.trim());
+            return json.table.rows.map((row) => {
+                const obj = {};
+                row.c.forEach((cell, i) => {
+                    obj[columns[i]] = cell?.v || "";
+                });
+                return obj;
+            });
+        }
+
+        function filterOrders() {
+            console.log(ordersData);
+            const email = document.getElementById('email-input').value.trim().toLowerCase();
+            const container = document.getElementById('orders-container');
+            container.innerHTML = "";
+
+            if (!email) {
+                container.innerHTML = "<p>Zadejte svůj e-mail pro zobrazení objednávek.</p>";
+                return;
+            }
+
+            const filteredOrders = ordersData.filter(order => order["Email Address"].trim().toLowerCase() === email);
+
+            if (filteredOrders.length === 0) {
+                container.innerHTML = "<p>Nebyly nalezeny žádné objednávky pro zadaný e-mail.</p>";
+                return;
+            }
+
+            filteredOrders.forEach(order => {
+                let totalPrice = 0;
+
+                let orderItems = Object.entries(itemMap).map(([id, name]) => {
+                    const count = parseInt(order[`Počet: ${name}`]) || 0;
+                    const size = order[`Velikost: ${name}`];
+                    if (count > 0) {
+                        const price = itemPrices[id] * count;
+                        totalPrice += price;
+                        return `
+                            <tr>
+                                <td>${name}</td>
+                                <td>${count} ks</td>
+                                <td>${size || "Neuvedeno"}</td>
+                                <td>${price} Kč</td>
+                            </tr>
+                        `;
+                    }
+                    return '';
+                }).join('');
+
+                if (!orderItems) orderItems = `<tr><td colspan="4">Žádné položky nebyly objednány.</td></tr>`;
+
+                const paymentStatus = order["Zaplaceno"]?.toLowerCase() === "ano"
+                    ? `<span class="chip paid">Zaplaceno</span>`
+                    : `<span class="chip unpaid">Nezaplaceno</span>`;
+
+                const formattedDate = parseGoogleDate(order["Datum aktualizace"]);
+
+                container.innerHTML += `
+                    <div class="order-card">
+                        <h2>Objednávka</h2>
+                        <p><strong>Jméno:</strong> ${order["Jméno Příjmení"] || "Neuvedeno"}</p>
+                        <p><strong>Třída:</strong> ${order["Třída / absolvent"] || "Neuvedeno"}</p>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Položka</th>
+                                    <th>Počet</th>
+                                    <th>Velikost</th>
+                                    <th>Cena</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${orderItems}
+                            </tbody>
+                        </table>
+                        <p><strong>Celková cena:</strong> ${totalPrice} Kč</p>
+                        <p><strong>Stav platby:</strong> ${paymentStatus}</p>
+                        <p><strong>Forma platby:</strong> ${order["Forma platby"] || "Neuvedeno"}</p>
+                        <p><strong>Datum aktualizace:</strong> ${formattedDate}</p>
+                    </div>
+                `;
+            });
+        }
+
+        function parseGoogleDate(googleDateString) {
+            if (!googleDateString || !googleDateString.startsWith("Date(")) {
+                return "Neplatné datum";
+            }
+
+            try {
+                // Extrahování čísel z formátu 'Date(YYYY,MM,DD,HH,MM,SS)'
+                const dateParts = googleDateString
+                    .replace("Date(", "")
+                    .replace(")", "")
+                    .split(",")
+                    .map(Number);
+
+                // Konstrukce objektu Date
+                const date = new Date(
+                    dateParts[0], // Rok
+                    dateParts[1], // Měsíc (0-based)
+                    dateParts[2], // Den
+                    dateParts[3], // Hodina
+                    dateParts[4], // Minuta
+                    dateParts[5]  // Sekunda
+                );
+
+                if (isNaN(date.getTime())) {
+                    return "Neplatné datum";
+                }
+
+                // Převod na čitelný formát
+                return date.toLocaleString("cs-CZ", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                });
+            } catch (error) {
+                console.error("Chyba při zpracování Google Data:", error);
+                return "Chyba při zpracování";
+            }
+        }
+
+    </script>
+</body>
+
+</html>
